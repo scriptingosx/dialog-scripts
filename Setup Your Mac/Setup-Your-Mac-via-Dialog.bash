@@ -14,7 +14,44 @@
 #
 ####################################################################################################
 
+scriptVersion="1.5.0"
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 
+####################################################################################################
+#
+# Functions required for reading preferences, do not edit these
+#
+####################################################################################################
+
+managed_preference_domain="com.scriptingosx.setupmymac"
+
+getPref() { # $1: key, $2: default value, $3: domain
+	local key=${1:?"key required"}
+	local defaultValue=${2?:"default value required"}
+	local domain=${3:-"$managed_preference_domain"}
+	
+    value=$(osascript -l JavaScript \
+        -e "$.NSUserDefaults.alloc.initWithSuiteName('$domain').objectForKey('$key').js")
+    
+    if [[ -n "$value" ]]; then
+    	echo "$value"
+    else
+    	echo "$defaultValue"
+    fi
+}
+
+getPrefAsJSON() { # $1: key, $2: domain
+	local key=${1:?"key required"}
+	local domain=${2:-"$managed_preference_domain"}
+	
+    osascript -l JavaScript <<EndOfScript
+    const item = $.NSUserDefaults.alloc.initWithSuiteName('$domain').objectForKey('$key')
+    if (item.js != null) {
+        const data = $.NSJSONSerialization.dataWithJSONObjectOptionsError(item, 5, null)
+        $.NSString.alloc.initWithDataEncoding(data, 4)
+    }
+EndOfScript
+}
 
 ####################################################################################################
 #
@@ -26,16 +63,17 @@
 # Script Version, Jamf Pro Script Parameters and default Exit Code
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-scriptVersion="1.5.0"
-export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
-scriptLog="${4:-"/var/tmp/org.churchofjesuschrist.log"}"
-debugMode="${5:-"true"}"                           # [ true (default) | false ]
-welcomeDialog="${6:-"true"}"                       # [ true (default) | false ]
-completionActionOption="${7:-"Restart Attended"}"  # [ wait | sleep (with seconds) | Shut Down | Shut Down Attended | Shut Down Confirm | Restart | Restart Attended (default) | Restart Confirm | Log Out | Log Out Attended | Log Out Confirm ]
-reconOptions=""                                    # Initialize dynamic recon options; built based on user's input at Welcome dialog
+# values set by arguments override values set by defaults/configuration profile
+
+scriptLog="${4:-$(getPref scriptLog "/var/tmp/org.churchofjesuschrist.log")}"
+debugMode="${5:-$(getPref debugMode "true")}"            # [ true (default) | false ]
+welcomeDialog="${6:-$(getPref welcomeDialog "true")}"    # [ true (default) | false ]
+completionActionOption="${7:-$(getPref completionActionOption "Restart Attended")}"
+                                                         # [ wait | sleep (with seconds) | Shut Down | Shut Down Attended | Shut Down Confirm | Restart | Restart Attended (default) | Restart Confirm | Log Out | Log Out Attended | Log Out Confirm ]
+
+# other variables
+reconOptions="" # Initialize dynamic recon options; built based on user's input at Welcome dialog
 exitCode="0"
-
-
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Reflect Debug Mode in `infotext` (i.e., bottom, left-hand corner of each dialog)
@@ -89,7 +127,10 @@ fi
 # "Welcome" JSON (thanks, @bartreardon!)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-welcomeJSON='{
+# if there is a welcome key in defaults/config profile, use that
+defaultsWelcomeJSON=$(getPrefAsJSON welcome)
+
+welcomeJSON=${defaultsWelcomeJSON:-'{
     "title" : "'"${welcomeTitle}"'",
     "message" : "'"${welcomeMessage}"'",
     "icon" : "'"${welcomeIcon}"'",
@@ -170,7 +211,8 @@ welcomeJSON='{
         }
     ],
     "height" : "635"
-}'
+}'}
+
 
 
 
@@ -241,7 +283,10 @@ setupYourMacPolicyArrayIconPrefixUrl="https://ics.services.jamfcloud.com/icon/ha
 
 # shellcheck disable=SC1112 # use literal slanted single quotes for typographic reasons
 
-policy_array=('
+# if there is a policy_array key in defaults/configuration profile use that
+defaultsPolicyArrayJSON=$(getPrefAsJSON policy_array)
+
+policy_array=${defaultsPolicyArrayJSON:-'
 {
     "steps": [
         {
@@ -338,8 +383,7 @@ policy_array=('
         }
     ]
 }
-')
-
+'}
 
 
 ####################################################################################################
@@ -867,7 +911,7 @@ function quitScript() {
 # Confirm script is running as root
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-if [[ $(id -u) -ne 0 ]]; then
+if [[ $(id -u) -ne 0 && $debugMode != "true" ]]; then
     echo "This script must be run as root; exiting."
     exit 1
 fi
