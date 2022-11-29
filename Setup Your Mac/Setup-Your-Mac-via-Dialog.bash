@@ -23,7 +23,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 #
 ####################################################################################################
 
-managed_preference_domain="com.scriptingosx.setupmymac"
+managed_preference_domain="org.churchofjesuschrist.setupmymac"
 
 getPref() { # $1: key, $2: default value, $3: domain
 	local key=${1:?"key required"}
