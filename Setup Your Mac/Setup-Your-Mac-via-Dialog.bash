@@ -25,7 +25,11 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 
 managed_preference_domain="org.churchofjesuschrist.setupmymac"
 
-getPref() { # $1: key, $2: default value, $3: domain
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Returns the Value for a Preference Key
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getPref() { # $1: key, $2: default value, $3: domain
 	local key=${1:?"key required"}
 	local defaultValue=${2?:"default value required"}
 	local domain=${3:-"$managed_preference_domain"}
@@ -40,7 +44,11 @@ getPref() { # $1: key, $2: default value, $3: domain
     fi
 }
 
-getPrefAsJSON() { # $1: key, $2: domain
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Returns the Value for a Preference Key as a JSON String
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function getPrefAsJSON() { # $1: key, $2: domain
 	local key=${1:?"key required"}
 	local domain=${2:-"$managed_preference_domain"}
 	
@@ -52,6 +60,43 @@ getPrefAsJSON() { # $1: key, $2: domain
     }
 EndOfScript
 }
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Parse JSON via osascript and JavaScript
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function get_json_value() {
+    JSON="$1" osascript -l 'JavaScript' \
+        -e 'const env = $.NSProcessInfo.processInfo.environment.objectForKey("JSON").js' \
+        -e "JSON.parse(env).$2"
+}
+
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Parse JSON via osascript and JavaScript for the Welcome dialog (thanks, @bartreardon!)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function get_json_value_welcomeDialog () {
+    for var in "${@:2}"; do jsonkey="${jsonkey}['${var}']"; done
+    JSON="$1" osascript -l 'JavaScript' \
+        -e 'const env = $.NSProcessInfo.processInfo.environment.objectForKey("JSON").js' \
+        -e "JSON.parse(env)$jsonkey"
+}
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# returns a new JSON string with the value for one key replaced
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function set_json_value() { # $1: JSON, $2: key, $4: value
+    JSON="$1" osascript -l 'JavaScript' <<EndOfScript
+    const env = $.NSProcessInfo.processInfo.environment.objectForKey("JSON").js
+    var dict = JSON.parse(env)
+    dict["$2"] = "$3"
+    JSON.stringify(dict)
+EndOfScript
+}
+
 
 ####################################################################################################
 #
@@ -84,7 +129,6 @@ if [[ "${debugMode}" == "true" ]]; then
 fi
 
 
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Set Dialog path, Command Files, JAMF binary, log files and currently logged-in user
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -113,15 +157,6 @@ loggedInUserFirstname=$( echo "$loggedInUserFullname" | cut -d " " -f 1 )
 welcomeTitle="Welcome to your new Mac, ${loggedInUserFirstname}!"
 welcomeMessage="To begin, please enter the required information below, then click **Continue** to start applying settings to your new Mac.  \n\nOnce completed, the **Quit** button will be re-enabled and you'll be prompted to restart your Mac.  \n\nIf you need assistance, please contact the Help Desk: +1 (801) 555-1212."
 
-# Welcome icon set to either light or dark, based on user's Apperance setting (thanks, @mm2270!) 
-appleInterfaceStyle=$( /usr/bin/defaults read /Users/"${loggedInUser}"/Library/Preferences/.GlobalPreferences.plist AppleInterfaceStyle 2>&1 )
-if [[ "${appleInterfaceStyle}" == "Dark" ]]; then
-    welcomeIcon="https://cdn-icons-png.flaticon.com/512/740/740878.png"
-else
-    welcomeIcon="https://cdn-icons-png.flaticon.com/512/979/979585.png"
-fi
-
-
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # "Welcome" JSON (thanks, @bartreardon!)
@@ -133,7 +168,8 @@ defaultsWelcomeJSON=$(getPrefAsJSON welcome)
 welcomeJSON=${defaultsWelcomeJSON:-'{
     "title" : "'"${welcomeTitle}"'",
     "message" : "'"${welcomeMessage}"'",
-    "icon" : "'"${welcomeIcon}"'",
+    "icon" : "https://cdn-icons-png.flaticon.com/512/979/979585.png",
+    "icondark" : "https://cdn-icons-png.flaticon.com/512/740/740878.png",    
     "iconsize" : "198.0",
     "button1text" : "Continue",
     "button2text" : "Quit",
@@ -213,7 +249,31 @@ welcomeJSON=${defaultsWelcomeJSON:-'{
     "height" : "635"
 }'}
 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# "Welcome" dialog Title, Message and Icon
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+# if the `title` value is not set, merge them here
+welcomeTitle=$(get_json_value "$welcomeJSON" title)
+if [[ $welcomeTitle == "" ]]; then
+    welcomeJSON=$(set_json_value "$welcomeJSON" title "Welcome to your new Mac, ${loggedInUserFirstname}!")
+fi
+
+# if the `message` value is not set, merge them here
+welcomeMessage=$(get_json_value "$welcomJSON" message)
+if [[ $welcomeMessage == "" ]]; then
+    welcomeJSON=$(set_json_value "$welcomeJSON" message "To begin, please enter the required information below, then click **Continue** to start applying settings to your new Mac.  \n\nOnce completed, the **Quit** button will be re-enabled and you'll be prompted to restart your Mac.  \n\nIf you need assistance, please contact the Help Desk: +1 (801) 555-1212.")
+fi
+
+# Welcome icon set to either light or dark, based on user's Apperance setting (thanks, @mm2270!) 
+appleInterfaceStyle=$( /usr/bin/defaults read /Users/"${loggedInUser}"/Library/Preferences/.GlobalPreferences.plist AppleInterfaceStyle 2>&1 )
+
+if [[ "${appleInterfaceStyle}" == "Dark" ]]; then
+    icondark=$(get_json_value "$welcomeJSON" icondark)
+    if [[ icondark != "" ]]; then
+        welcomeJSON=$(set_json_value "$welcomeJSON" icon "$icondark")
+    fi
+fi
 
 
 ####################################################################################################
@@ -660,28 +720,6 @@ function finalise(){
 
 
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Parse JSON via osascript and JavaScript
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-function get_json_value() {
-    JSON="$1" osascript -l 'JavaScript' \
-        -e 'const env = $.NSProcessInfo.processInfo.environment.objectForKey("JSON").js' \
-        -e "JSON.parse(env).$2"
-}
-
-
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Parse JSON via osascript and JavaScript for the Welcome dialog (thanks, @bartreardon!)
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-function get_json_value_welcomeDialog () {
-    for var in "${@:2}"; do jsonkey="${jsonkey}['${var}']"; done
-    JSON="$1" osascript -l 'JavaScript' \
-        -e 'const env = $.NSProcessInfo.processInfo.environment.objectForKey("JSON").js' \
-        -e "JSON.parse(env)$jsonkey"
-}
 
 
 
